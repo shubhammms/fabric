@@ -195,9 +195,9 @@ func TestRateLimitClientNumChange(t *testing.T) {
 		assert.Less(t, min, TPS)
 	})
 
-	// Next, wait two seconds and then run only a single client.
-	// should have all the quota available to itself.
-	clock.Sleep(time.Second * 2)
+	// Next, wait for clients to become inactive (InactivityTimeout is 10s),
+	// then run only a single client which should have all the quota available to itself.
+	clock.Sleep(time.Second * 11)
 
 	t.Run("", func(t *testing.T) {
 		transactions := 10000
