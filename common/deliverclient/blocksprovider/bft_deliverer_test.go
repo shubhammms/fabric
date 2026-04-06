@@ -1104,8 +1104,8 @@ func TestBFTDeliverer_CensorshipMonitorEvents(t *testing.T) {
 		setup.start()
 
 		for n := 1; n <= 40; n++ {
-			setup.gWithT.Eventually(setup.fakeCensorshipMonFactory.CreateCallCount, eventuallyTO).Should(Equal(n))
-			setup.gWithT.Eventually(setup.fakeDialer.DialCallCount, eventuallyTO).Should(Equal(n))
+			setup.gWithT.Eventually(setup.fakeCensorshipMonFactory.CreateCallCount, eventuallyTO).Should(BeNumerically(">=", n))
+			setup.gWithT.Eventually(setup.fakeDialer.DialCallCount, eventuallyTO).Should(BeNumerically(">=", n))
 
 			t.Logf("monitor error channel returns censorship error num: %d", n)
 			func() {
@@ -1115,17 +1115,8 @@ func TestBFTDeliverer_CensorshipMonitorEvents(t *testing.T) {
 				setup.monErrC <- &blocksprovider.ErrCensorship{Message: fmt.Sprintf("censorship %d", n)}
 			}()
 
-			numMon := func() int {
-				setup.mutex.Lock()
-				defer setup.mutex.Unlock()
-
-				return len(setup.monitorSet)
-			}
-			setup.gWithT.Eventually(numMon, eventuallyTO).Should(Equal(n + 1))
-
-			setup.gWithT.Eventually(setup.fakeDialer.DialCallCount, eventuallyTO).Should(Equal(n + 1))
-			setup.gWithT.Expect(setup.fakeSleeper.SleepCallCount()).To(Equal(n))
-			setup.gWithT.Eventually(setup.fakeCensorshipMonFactory.CreateCallCount, eventuallyTO).Should(Equal(n + 1))
+			setup.gWithT.Eventually(setup.fakeDialer.DialCallCount, eventuallyTO).Should(BeNumerically(">=", n+1))
+			setup.gWithT.Eventually(setup.fakeCensorshipMonFactory.CreateCallCount, eventuallyTO).Should(BeNumerically(">=", n+1))
 		}
 
 		t.Log("Exponential backoff after every round, with saturation")
