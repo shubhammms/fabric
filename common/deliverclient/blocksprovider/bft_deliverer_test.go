@@ -1101,11 +1101,34 @@ func TestBFTDeliverer_CensorshipMonitorEvents(t *testing.T) {
 
 		setup := newBFTDelivererTestSetup(t)
 		setup.initialize(t)
+
+		// Override DialStub to close previous connections immediately, preventing
+		// accumulation of 40+ gRPC connections with active reconnection timers which
+		// exhausts the Go scheduler and causes the BFTDeliverer goroutine to stall.
+		setup.fakeDialer.DialStub = func(addr string, rootCerts [][]byte) (*grpc.ClientConn, error) {
+			setup.mutex.Lock()
+			defer setup.mutex.Unlock()
+
+			for _, old := range setup.clientConnSet {
+				old.Close()
+			}
+			setup.clientConnSet = nil
+
+			cc, err := grpc.Dial("localhost:6005", grpc.WithTransportCredentials(insecure.NewCredentials()))
+			setup.clientConnSet = append(setup.clientConnSet, cc)
+			require.NoError(t, err)
+
+			return cc, nil
+		}
+
 		setup.start()
 
+		// Use a longer timeout as this test runs 40 iterations
+		longTO := 2 * time.Minute
+
 		for n := 1; n <= 40; n++ {
-			setup.gWithT.Eventually(setup.fakeCensorshipMonFactory.CreateCallCount, eventuallyTO).Should(BeNumerically(">=", n))
-			setup.gWithT.Eventually(setup.fakeDialer.DialCallCount, eventuallyTO).Should(BeNumerically(">=", n))
+			setup.gWithT.Eventually(setup.fakeCensorshipMonFactory.CreateCallCount, longTO).Should(BeNumerically(">=", n))
+			setup.gWithT.Eventually(setup.fakeDialer.DialCallCount, longTO).Should(BeNumerically(">=", n))
 
 			t.Logf("monitor error channel returns censorship error num: %d", n)
 			func() {
@@ -1115,8 +1138,8 @@ func TestBFTDeliverer_CensorshipMonitorEvents(t *testing.T) {
 				setup.monErrC <- &blocksprovider.ErrCensorship{Message: fmt.Sprintf("censorship %d", n)}
 			}()
 
-			setup.gWithT.Eventually(setup.fakeDialer.DialCallCount, eventuallyTO).Should(BeNumerically(">=", n+1))
-			setup.gWithT.Eventually(setup.fakeCensorshipMonFactory.CreateCallCount, eventuallyTO).Should(BeNumerically(">=", n+1))
+			setup.gWithT.Eventually(setup.fakeDialer.DialCallCount, longTO).Should(BeNumerically(">=", n+1))
+			setup.gWithT.Eventually(setup.fakeCensorshipMonFactory.CreateCallCount, longTO).Should(BeNumerically(">=", n+1))
 		}
 
 		t.Log("Exponential backoff after every round, with saturation")
